@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Señas con voz - Interpreta el lenguaje de señas</title>
+    <!-- MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <style>
+        :root {
+            --primary-color: #3182ce;
+            --primary-dark: #2c5282;
+            --text-color: #2d3748;
+            --bg-color: #f0f4f8;
+            --error-color: #e53e3e;
+            --success-bg: #ebf8ff;
+            --success-text: #2b6cb0;
+            --header-bg: #edeb73;
+            --footer-bg: var(--primary-color);
+            --shadow: 0 2px 4px rgba(0,0,0,0.1);
+            --hand-line-color: #00FF00;
+            --hand-point-color: #FF0000;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        header, footer {
+            padding: 1rem clamp(1rem, 5vw, 2rem);
+        }
+        
+        header {
+            background-color: var(--header-bg);
+            color: var(--text-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            box-shadow: var(--shadow);
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.625rem;
+            font-size: clamp(1.2rem, 4vw, 1.8rem);
+            font-weight: 700;
+        }
+        
+        .logo .icono {
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+            gap: clamp(1rem, 3vw, 2rem);
+        }
+        
+        nav a {
+            color: inherit;
+            text-decoration: none;
+            font-weight: 500;
+            transition: opacity 0.2s ease;
+        }
+        
+        nav a:hover {
+            opacity: 0.8;
+        }
+        
+        .main-container {
+            flex: 1;
+            width: min(100% - 2rem, 1200px);
+            margin: 2rem auto;
+            padding: 1rem;
+        }
+        
+        .tracker-container {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        
+        .camera-controls {
+            padding: 1rem;
+            text-align: center;
+            font-weight: 600;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .video-panels {
+            display: flex;
+            flex-direction: row;
+            gap: 1rem;
+            padding: 1rem;
+        }
+        
+        .video-container {
+            flex: 1;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+        }
+        
+        .interpretation-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            aspect-ratio: 4/3;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .interpretation-title {
+            font-size: 1.2rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        
+        .interpretation-text {
+            font-size: 1.5rem;
+            color: var(--text-color);
+            flex-grow: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            transform: scaleX(-1);
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            padding: 1rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            min-width: 150px;
+        }
+        
+        button:hover:not(:disabled) {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        
+        button:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+        
+        button:disabled {
+            background-color: #a0aec0;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        .permission-note {
+            text-align: center;
+            padding: 1rem;
+            color: #4a5568;
+            font-size: 0.9rem;
+        }
+        
+        .error-message {
+            color: var(--error-color);
+            font-weight: 500;
+            padding: 0.5rem;
+            text-align: center;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        footer {
+            background-color: var(--footer-bg);
+            color: white;
+            text-align: center;
+            margin-top: auto;
+        }
+        
+        @media (max-width: 768px) {
+            .video-panels {
+                flex-direction: column;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            button {
+                width: 100%;
+                max-width: 250px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <img class="icono" src="./img/logo.png" alt="Logo" onerror="this.style.display='none'">
+            <span>Señas con Voz</span>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="#">Inicio</a></li>
+                <li><a href="#">¿Cómo funciona?</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <div class="main-container">
+        <div class="tracker-container">
+            <div class="camera-controls">
+                <div>Cámara en tiempo real - Visualización de señas y expresiones faciales</div>
+            </div>
+            
+            <div class="video-panels">
+                <div class="video-container">
+                    <video id="inputVideo" autoplay playsinline></video>
+                    <canvas id="outputCanvas"></canvas>
+                </div>
+                <div class="interpretation-panel">
+                    <div class="interpretation-title">Interpretación de la seña</div>
+                    <div class="interpretation-text" id="signInterpretation">Realiza una seña frente a la cámara</div>
+                </div>
+            </div>
+            
+            <div class="permission-note">
+                Haz clic en "Activar Cámara" y permite el acceso a tu cámara para comenzar a interpretar lenguaje de señas y expresiones faciales
+            </div>
+            
+            <div class="error-message" id="errorMessage"></div>
+            
+            <div class="controls">
+                <button id="startButton">Activar Cámara</button>
+                <button id="stopButton" disabled>Detener Cámara</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Señas con Voz &copy; 2025 - Tecnología para la inclusión
+    </footer>
+
+    <script>
+        const video = document.getElementById('inputVideo');
+        const canvas = document.getElementById('outputCanvas');
+        const canvasCtx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startButton');
+        const stopBtn = document.getElementById('stopButton');
+        const errorMessage = document.getElementById('errorMessage');
+        const signInterpretation = document.getElementById('signInterpretation');
+        
+        let stream = null;
+        let camera = null;
+        let lastGesture = '';
+        let gestureTimeout = null;
+
+        // Configuración de MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        // Configuración de MediaPipe Face Mesh
+        const faceMesh = new FaceMesh({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            }
+        });
+
+        faceMesh.setOptions({
+            maxNumFaces: 1,
+            refineLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        // Variables para almacenar los últimos resultados
+        let lastHandResults = null;
+        let lastFaceResults = null;
+
+        // Diccionario de señas básicas (esto es un ejemplo simplificado)
+        const signDictionary = {
+            'thumbs_up': '👍 (Está bien)',
+            'thumbs_down': '👎 (No está bien)',
+            'victory': '✌️ (Victoria/Paz)',
+            'open_hand': '🖐️ (Hola/Detente)',
+            'closed_fist': '✊ (Fuerza/Determinación)',
+            'pointing': '👆 (Señalar)',
+            'ok_hand': '👌 (Perfecto/OK)',
+            'raised_hand': '✋ (Alto/Pregunta)'
+        };
+
+        // Función para detectar gestos básicos (simplificado)
+        function detectGesture(landmarks) {
+            // Pulgar arriba
+            //if (landmarks[4].y < landmarks[3].y && landmarks[4].y < landmarks[2].y) {
+            //    return 'thumbs_up';
+            //}
+            // Pulgar abajo
+             if (landmarks[4].y > landmarks[3].y && landmarks[4].y > landmarks[2].y) {
+                return 'thumbs_down';
+            }
+            // Señal de victoria
+            else if (landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y && 
+                     landmarks[16].y > landmarks[14].y && landmarks[20].y > landmarks[18].y) {
+                return 'victory';
+            }
+            // Mano abierta
+            else if (landmarks[8].y > landmarks[6].y && landmarks[12].y > landmarks[10].y && 
+                     landmarks[16].y > landmarks[14].y && landmarks[20].y > landmarks[18].y) {
+                return 'open_hand';
+            }
+            // Puño cerrado
+            else if (landmarks[8].y > landmarks[6].y && landmarks[12].y > landmarks[10].y && 
+                     landmarks[16].y > landmarks[14].y && landmarks[20].y > landmarks[18].y &&
+                     landmarks[4].x > landmarks[2].x) {
+                return 'closed_fist';
+            }
+            // Señalar
+            else if (landmarks[8].y < landmarks[6].y && landmarks[12].y > landmarks[10].y && 
+                     landmarks[16].y > landmarks[14].y && landmarks[20].y > landmarks[18].y) {
+                return 'pointing';
+            }
+            // OK
+            else if (Math.abs(landmarks[8].x - landmarks[4].x) < 0.05 && 
+                     Math.abs(landmarks[8].y - landmarks[4].y) < 0.05) {
+                return 'ok_hand';
+            }
+            // Mano levantada
+            else if (landmarks[8].y < landmarks[6].y && landmarks[12].y < landmarks[10].y && 
+                     landmarks[16].y < landmarks[14].y && landmarks[20].y < landmarks[18].y) {
+                return 'raised_hand';
+            }
+            
+            
+            return null;
+        }
+
+        // Función para dibujar los resultados en el canvas
+        function drawResults() {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Dibujar el video como fondo
+            canvasCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            // Dibujar puntos faciales si existen
+            if (lastFaceResults && lastFaceResults.multiFaceLandmarks) {
+                for (const landmarks of lastFaceResults.multiFaceLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_TESSELATION, 
+                        {color: '#C0C0C070', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYE, 
+                        {color: '#FF3030', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_RIGHT_EYEBROW, 
+                        {color: '#FF3030', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYE, 
+                        {color: '#30FF30', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_LEFT_EYEBROW, 
+                        {color: '#30FF30', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_FACE_OVAL, 
+                        {color: '#E0E0E0', lineWidth: 1});
+                    drawConnectors(canvasCtx, landmarks, FACEMESH_LIPS, 
+                        {color: '#E0E0E0', lineWidth: 1});
+                }
+            }
+            
+            // Detección de gestos con las manos
+            if (lastHandResults && lastHandResults.multiHandLandmarks) {
+                for (const landmarks of lastHandResults.multiHandLandmarks) {
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                        color: '#00FF00',
+                        lineWidth: 2
+                    });
+                    
+                    drawLandmarks(canvasCtx, landmarks, {
+                        color: '#FF0000',
+                        lineWidth: 1
+                    });
+                    
+                    // Detectar gestos
+                    const currentGesture = detectGesture(landmarks);
+                    if (currentGesture && currentGesture !== lastGesture) {
+                        lastGesture = currentGesture;
+                        updateSignInterpretation(currentGesture);
+                        
+                        // Resetear después de 2 segundos sin detección
+                        if (gestureTimeout) clearTimeout(gestureTimeout);
+                        gestureTimeout = setTimeout(() => {
+                            lastGesture = '';
+                            signInterpretation.textContent = 'Realiza una seña frente a la cámara';
+                        }, 2000);
+                    }
+                }
+            }
+            
+            canvasCtx.restore();
+            
+            // Solicitar el siguiente frame
+            requestAnimationFrame(drawResults);
+        }
+
+        // Actualizar la interpretación de la seña
+        function updateSignInterpretation(gesture) {
+            const interpretation = signDictionary[gesture] || 'Seña no reconocida';
+            signInterpretation.textContent = interpretation;
+        }
+
+        // Configurar los callbacks para los resultados
+        hands.onResults((results) => {
+            lastHandResults = results;
+        });
+
+        faceMesh.onResults((results) => {
+            lastFaceResults = results;
+        });
+
+        // Función para iniciar la cámara
+        async function startCamera() {
+            try {
+                errorMessage.textContent = '';
+                errorMessage.classList.remove('show');
+                
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Tu navegador no soporta el acceso a la cámara');
+                }
+                
+                // Configuración de la cámara
+                const constraints = {
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user', // Siempre usar cámara frontal
+                        frameRate: { ideal: 30 }
+                    },
+                    audio: false
+                };
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                video.srcObject = stream;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                
+                // Ajustar el canvas al tamaño del video
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    
+                    // Iniciar el procesamiento
+                    camera = new Camera(video, {
+                        onFrame: async () => {
+                            await faceMesh.send({image: video});
+                            await hands.send({image: video});
+                        },
+                        width: video.videoWidth,
+                        height: video.videoHeight
+                    });
+                    camera.start();
+                    
+                    // Iniciar el bucle de dibujo
+                    drawResults();
+                    
+                    video.play().catch(err => {
+                        errorMessage.textContent = 'Error al iniciar video: ' + err.message;
+                        errorMessage.classList.add('show');
+                    });
+                };
+                
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                handleCameraError(err);
+            }
+        }
+
+        // Función para manejar errores de cámara
+        function handleCameraError(err) {
+            let errorMsg = `Error: ${err.name || 'Error desconocido'}`;
+            
+            if (err.name === 'NotAllowedError') {
+                errorMsg = 'Permiso denegado. Por favor habilita el acceso a la cámara en la configuración de tu navegador.';
+            } else if (err.name === 'NotFoundError') {
+                errorMsg = 'No se encontró ninguna cámara disponible.';
+            } else if (err.name === 'NotReadableError') {
+                errorMsg = 'La cámara está siendo usada por otra aplicación.';
+            } else if (err.name === 'OverconstrainedError') {
+                errorMsg = 'La configuración solicitada no es compatible con tu dispositivo.';
+            }
+            
+            errorMessage.textContent = errorMsg;
+            errorMessage.classList.add('show');
+            
+            // Mostrar botón para intentar nuevamente
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        // Función para detener la cámara
+        function stopCamera() {
+            if (stream) {
+                const tracks = stream.getTracks();
+                tracks.forEach(track => track.stop());
+                video.srcObject = null;
+                
+                if (camera) {
+                    camera.stop();
+                    camera = null;
+                }
+            }
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            // Limpiar canvas
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Resetear interpretación
+            signInterpretation.textContent = 'Realiza una seña frente a la cámara';
+            lastGesture = '';
+            if (gestureTimeout) clearTimeout(gestureTimeout);
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+        
+        // Intentar iniciar automáticamente (solo si ya hay permisos)
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Verificar si ya tenemos permisos
+                if (navigator.permissions) {
+                    const permissionStatus = await navigator.permissions.query({ name: 'camera' });
+                    if (permissionStatus.state === 'granted') {
+                        startCamera();
+                    }
+                }
+            } catch (err) {
+                console.log("No se pudo verificar el estado de los permisos:", err);
+            }
+        });
+
+        // En tu código frontend, verifica si estás en HTTPS:
+        if (window.location.protocol !== 'https:' && !['localhost', '192.168.1.118'].includes(window.location.hostname)) {
+            alert("Se requiere HTTPS para acceso a cámara desde redes externas");
+        }
+    </script>
+</body>
+</html>
